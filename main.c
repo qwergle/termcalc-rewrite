@@ -128,6 +128,8 @@ double ch_to_digit(char ch) {
 
 #define ADD_NEGATIVE_SIGN_TOKEN() *(tokens + tok_pos++) = (Token) {NEG_OP, i, .v.num_value = 0}
 
+#define ADD_FACTORIAL_TOKEN() *(tokens + tok_pos++) = (Token) {FACTORIAL_OP, i, .v.num_value = 0}
+
 
 #define INCR_LENGTH 32
 
@@ -136,6 +138,7 @@ double ch_to_digit(char ch) {
 #define ERR_NO_SECOND_OPERAND_FOUND 2
 #define ERR_MULTIPLE_DECIMAL_POINTS 3
 #define ERR_NO_FUNCTION_INPUT_FOUND 4
+#define ERR_NO_OPERAND_FOUND 5
 
 Token *tokenizer(char *str, size_t *tokens_length) {
   // Variables related to the token buffer
@@ -182,6 +185,7 @@ Token *tokenizer(char *str, size_t *tokens_length) {
     if (ch == '\0') {
     // If it's the end of the string
       if (PREV_TOKEN_TYPE == BIN_OP) TOKENIZER_ERROR(ERR_NO_SECOND_OPERAND_FOUND);
+      if (PREV_TOKEN_TYPE == NEG_OP) TOKENIZER_ERROR(ERR_NO_OPERAND_FOUND);
       RESIZE_TOKENS_IF_NEEDED();
       *tokens_length = tok_pos;
       return tokens;
@@ -245,6 +249,7 @@ Token *tokenizer(char *str, size_t *tokens_length) {
       if (isDecimal) TOKENIZER_ERROR(ERR_MULTIPLE_DECIMAL_POINTS);
       DECIMAL_ON();
     } else if (isalpha(ch) || ch == '_') {
+    // If it is a word character
       if (!isWord) {
         if (PREV_TOKEN_TYPE == NUM || PREV_TOKEN_TYPE == CLOSE_PARA) TOKENIZER_ERROR(ERR_NO_IMPLICIT_MULTIPLICATION);
         isWord = true;
@@ -253,17 +258,22 @@ Token *tokenizer(char *str, size_t *tokens_length) {
       // Add character
       RESIZE_WORD_BUFFER_IF_NEEDED();
       strncat(buf, &ch, 1);
+    } else if (ch == '!') {
+    // If it is a factorial
+      if (PREV_TOKEN_TYPE == BIN_OP || PREV_TOKEN_TYPE == OPEN_PARA || PREV_TOKEN_TYPE == ERR_TOK) TOKENIZER_ERROR(ERR_NO_OPERAND_FOUND);
+      ADD_FACTORIAL_TOKEN();
     }
   }
   return tokens;
 }
 
 char *error_message(size_t value) {
-  if (value == 0) return "No implicit multiplication.";
-  else if (value == 1) return "No double operators.";
-  else if (value == 2) return "No second operand found.";
-  else if (value == 3) return "No double decimal points.";
-  else if (value == 4) return "No function input found.";
+  if (value == ERR_NO_IMPLICIT_MULTIPLICATION) return "No implicit multiplication.";
+  else if (value == ERR_NO_DOUBLE_OPERATOR) return "No double operators.";
+  else if (value == ERR_NO_SECOND_OPERAND_FOUND) return "No second operand found.";
+  else if (value == ERR_MULTIPLE_DECIMAL_POINTS) return "No double decimal points.";
+  else if (value == ERR_NO_FUNCTION_INPUT_FOUND) return "No function input found.";
+  else if (value == ERR_NO_OPERAND_FOUND) return "No operand found.";
   return "No error message found.";
 }
 
@@ -283,6 +293,7 @@ void print_token(Token token) {
   else if (token.token_type == CLOSE_PARA) putc(')', stdout);
   else if (token.token_type == WORD) printf("[%s]", token.v.str);
   else if (token.token_type == NEG_OP) putc('-', stdout);
+  else if (token.token_type == FACTORIAL_OP) fputs("[!]", stdout);
 }
 
 void print_tokens(Token *tokens, size_t tokens_len) {
