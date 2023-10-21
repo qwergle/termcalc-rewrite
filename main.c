@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <math.h>
 #include "vm.h"
+#include "error_messages.h"
 
 
 // Get full-length, allocated string from stdin
@@ -132,13 +133,6 @@ double ch_to_digit(char ch) {
 
 
 #define INCR_LENGTH 32
-
-#define ERR_NO_IMPLICIT_MULTIPLICATION 0
-#define ERR_NO_DOUBLE_OPERATOR 1
-#define ERR_NO_SECOND_OPERAND_FOUND 2
-#define ERR_MULTIPLE_DECIMAL_POINTS 3
-#define ERR_NO_FUNCTION_INPUT_FOUND 4
-#define ERR_NO_OPERAND_FOUND 5
 
 Token *tokenizer(char *str, size_t *tokens_length) {
   // Variables related to the token buffer
@@ -306,6 +300,54 @@ void print_tokens(Token *tokens, size_t tokens_len) {
       if (i != tokens_len-1) putc(' ', stdout);
     }
   }
+}
+
+struct SemiTokenTreeNode {
+  bool isToken;
+  union {
+    struct {
+      enum {STT_OP, STT_PARA, STT_NUM, STT_VAR, STT_FUNC} nodeType;
+      union {
+        enum {STT_ADD, STT_SUB, STT_MUL, STT_DIV, STT_EXP, STT_NEG, STT_FACTORIAL} binOpType;
+        double num_value;
+        char *var_name;
+        struct {
+          size_t contents_len;
+          struct SemiTokenTreeNode *nodes;
+        } contents;
+      } value;
+    } node;
+    Token token;
+  } content;
+};
+
+typedef struct SemiTokenTreeNode SemiTokenTreeNode;
+
+// Turns a token sequence into a flat half-tree, and does some really basic parsing (number tokens to number nodes, variable tokens to variable nodes)
+SemiTokenTreeNode create_top_node(Token *tokens, size_t tok_length) {
+  SemiTokenTreeNode top_node;
+  top_node.isToken = false;
+  top_node.content.node.nodeType = STT_PARA;
+  top_node.content.node.value.contents.contents_len = tok_length;
+  top_node.content.node.value.contents.nodes = malloc(sizeof(SemiTokenTreeNode) * tok_length);
+
+  for (size_t i = 0; i < tok_length; i++) {
+    SemiTokenTreeNode *current_node = top_node.content.node.value.contents.nodes + i;
+    if ((tokens + i)->token_type == NUM) {
+      current_node->isToken = false;
+      current_node->content.node.nodeType = STT_NUM;
+      current_node->content.node.value.num_value = (tokens + i)->v.num_value;
+    } else if ((tokens + i)->token_type == WORD) {
+      current_node->isToken = false;
+      current_node->content.node.nodeType = STT_VAR;
+      current_node->content.node.value.var_name = strdup((tokens + i)->v.str);
+    } else {
+      current_node->isToken = true;
+      current_node->content.token = *(tokens + i);
+    }
+  }
+
+  return top_node;
 }
 
 int main(void) {
