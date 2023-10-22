@@ -302,6 +302,7 @@ void print_tokens(Token *tokens, size_t tokens_len) {
   }
 }
 
+// Transistional syntax tree structure for use during parsing
 struct SemiTokenTreeNode {
   bool isToken;
   union {
@@ -350,11 +351,30 @@ SemiTokenTreeNode create_top_node(Token *tokens, size_t tok_length) {
   return top_node;
 }
 
+void print_node(SemiTokenTreeNode node) {
+  if (node.isToken) print_token(node.content.token);
+  else {
+    if (node.content.node.nodeType == STT_NUM) printf("{%g}", node.content.node.value.num_value);
+    if (node.content.node.nodeType == STT_VAR) printf("{%s}", node.content.node.value.var_name);
+    if (node.content.node.nodeType == STT_PARA) {
+      putc('{', stdout);
+      for (size_t i = 0; i < node.content.node.value.contents.contents_len; i++) {
+        putc(' ', stdout);
+        print_node(*(node.content.node.value.contents.nodes + i));
+      }
+      fputs(" }", stdout);
+    }
+  }
+}
+
 int main(void) {
   size_t tok_length = 32;
   char *str = getstr();
   Token *tokens = tokenizer(str, &tok_length);
   print_tokens(tokens, tok_length);
+  putc('\n', stdout);
+  SemiTokenTreeNode top_node = create_top_node(tokens, tok_length);
+  print_node(top_node);
   putc('\n', stdout);
   return 0;
 }
