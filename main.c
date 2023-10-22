@@ -268,6 +268,7 @@ char *error_message(size_t value) {
   else if (value == ERR_MULTIPLE_DECIMAL_POINTS) return "No double decimal points.";
   else if (value == ERR_NO_FUNCTION_INPUT_FOUND) return "No function input found.";
   else if (value == ERR_NO_OPERAND_FOUND) return "No operand found.";
+  else if (value == ERR_UNCLOSED_PARENTHESIS) return "No unclosed parentheses.";
   return "No error message found.";
 }
 
@@ -307,7 +308,7 @@ struct SemiTokenTreeNode {
   bool isToken;
   union {
     struct {
-      enum {STT_OP, STT_PARA, STT_NUM, STT_VAR, STT_FUNC} nodeType;
+      enum {STT_OP, STT_PARA, STT_NUM, STT_VAR, STT_FUNC, STT_ERROR} nodeType;
       char *name;
       union {
         enum {STT_ADD, STT_SUB, STT_MUL, STT_DIV, STT_EXP, STT_NEG, STT_FACTORIAL} binOpType;
@@ -316,6 +317,7 @@ struct SemiTokenTreeNode {
           size_t contents_len;
           struct SemiTokenTreeNode *nodes;
         } contents;
+        size_t error_value;
       } value;
     } node;
     Token token;
@@ -323,6 +325,14 @@ struct SemiTokenTreeNode {
 };
 
 typedef struct SemiTokenTreeNode SemiTokenTreeNode;
+
+SemiTokenTreeNode error_node(value) {
+  SemiTokenTreeNode node;
+  node.isToken = false;
+  node.content.node.nodeType = STT_ERROR;
+  node.content.node.value.error_value = value;
+  return node;
+}
 
 // Turns a token sequence into a flat half-tree, and does some really basic parsing (number tokens to number nodes, variable tokens to variable nodes)
 SemiTokenTreeNode create_top_node(Token *tokens, size_t tok_length) {
@@ -357,6 +367,7 @@ struct parenthesisPair {
   size_t depth;
 };
 
+// Comparision function used in qsort
 int compare_pair_depth(const void *a, const void *b) {
   size_t depth_a = ((struct parenthesisPair *)a)->depth;
   size_t depth_b = ((struct parenthesisPair *)b)->depth;
@@ -371,21 +382,24 @@ SemiTokenTreeNode parse_parentheses(SemiTokenTreeNode top_node) {
   size_t *close_para_positions = malloc(sizeof(size_t) * top_node.content.node.value.contents.contents_len / 2); // Array of closing parentheses positions (second half of pair)
   size_t j = 0;
   size_t *open_para_stack = malloc(sizeof(size_t) * top_node.content.node.value.contents.contents_len / 2); // LIFO stack of opening parenthesis positions
-  size_t stack_pos = -1;
+  size_t stack_pos = 0;
 
   // Match pairs and map depths
   for (size_t i = 0; i < top_node.content.node.value.contents.contents_len; i++) {
     *(depth_map + i) = current_depth;
     if (top_node.content.node.value.contents.nodes[i].content.token.token_type == OPEN_PARA) {
-      *(open_para_stack + ++stack_pos) = i;
+      *(open_para_stack + stack_pos++) = i;
       current_depth++;
     } else if (top_node.content.node.value.contents.nodes[i].content.token.token_type == CLOSE_PARA) {
-      *(open_para_positions + j) = *(open_para_stack + stack_pos--);
+      *(open_para_positions + j) = *(open_para_stack + stack_pos-- - 1);
       *(close_para_positions + j) = i;
       j++;
       current_depth--;
     }
   }
+
+  // Handle if there are unclosed opening parentheses
+  if (stack_pos) return error_node(ERR_UNCLOSED_PARENTHESIS);
 
   // Sort parenthesis pairs
   struct parenthesisPair *pairs = malloc(sizeof(struct parenthesisPair) * j);
@@ -459,6 +473,9 @@ void print_node(SemiTokenTreeNode node) {
         putc(' ', stdout);
       }
       putc('}', stdout);
+    } else if (node.content.node.nodeType == STT_ERROR) {
+      fputs(error_message(node.content.node.value.error_value), stdout);
+      return;
     }
   }
 }
