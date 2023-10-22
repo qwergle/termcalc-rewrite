@@ -308,10 +308,10 @@ struct SemiTokenTreeNode {
   union {
     struct {
       enum {STT_OP, STT_PARA, STT_NUM, STT_VAR, STT_FUNC} nodeType;
+      char *name;
       union {
         enum {STT_ADD, STT_SUB, STT_MUL, STT_DIV, STT_EXP, STT_NEG, STT_FACTORIAL} binOpType;
         double num_value;
-        char *var_name;
         struct {
           size_t contents_len;
           struct SemiTokenTreeNode *nodes;
@@ -341,7 +341,7 @@ SemiTokenTreeNode create_top_node(Token *tokens, size_t tok_length) {
     } else if ((tokens + i)->token_type == WORD) {
       current_node->isToken = false;
       current_node->content.node.nodeType = STT_VAR;
-      current_node->content.node.value.var_name = strdup((tokens + i)->v.str);
+      current_node->content.node.name = strdup((tokens + i)->v.str);
     } else {
       current_node->isToken = true;
       current_node->content.token = *(tokens + i);
@@ -363,7 +363,7 @@ int compare_pair_depth(const void *a, const void *b) {
   return ((int) depth_a) - ((int) depth_b);
 }
 
-// Use pair-finding and depth-mapping to parse parentheses
+// Use pair-finding and depth-mapping to parse parentheses/functions
 SemiTokenTreeNode parse_parentheses(SemiTokenTreeNode top_node) {
   size_t current_depth = 0;
   size_t *depth_map = malloc(sizeof(size_t) * top_node.content.node.value.contents.contents_len); // The parenthesis depth of every node in the list
@@ -410,7 +410,10 @@ SemiTokenTreeNode parse_parentheses(SemiTokenTreeNode top_node) {
     SemiTokenTreeNode *inside_nodes = malloc(sizeof(SemiTokenTreeNode) * internal_length);
     memcpy(inside_nodes, nodes + open_index + 1, internal_length * sizeof(SemiTokenTreeNode));
     (nodes + open_index)->isToken = false;
-    (nodes + open_index)->content.node.nodeType = STT_PARA;
+    if ((nodes + open_index)->content.token.v.str != NULL) {
+      (nodes + open_index)->content.node.name = (nodes + open_index)->content.token.v.str;
+      (nodes + open_index)->content.node.nodeType = STT_FUNC;
+    } else (nodes + open_index)->content.node.nodeType = STT_PARA;
     (nodes + open_index)->content.node.value.contents.nodes = inside_nodes;
     (nodes + open_index)->content.node.value.contents.contents_len = internal_length;
     memmove(nodes + open_index + 1, nodes + close_index + 1, (top_node.content.node.value.contents.contents_len - close_index - 1) * sizeof(SemiTokenTreeNode));
@@ -441,14 +444,21 @@ void print_node(SemiTokenTreeNode node) {
   if (node.isToken) print_token(node.content.token);
   else {
     if (node.content.node.nodeType == STT_NUM) printf("{%g}", node.content.node.value.num_value);
-    if (node.content.node.nodeType == STT_VAR) printf("{%s}", node.content.node.value.var_name);
-    if (node.content.node.nodeType == STT_PARA) {
+    else if (node.content.node.nodeType == STT_VAR) printf("{%s}", node.content.node.name);
+    else if (node.content.node.nodeType == STT_PARA) {
       putc('{', stdout);
       for (size_t i = 0; i < node.content.node.value.contents.contents_len; i++) {
         putc(' ', stdout);
         print_node(*(node.content.node.value.contents.nodes + i));
       }
       fputs(" }", stdout);
+    } else if (node.content.node.nodeType == STT_FUNC) {
+      printf("%s{ ", node.content.node.name);
+      for (size_t i = 0; i < node.content.node.value.contents.contents_len; i++) {
+        print_node(*(node.content.node.value.contents.nodes + i));
+        putc(' ', stdout);
+      }
+      putc('}', stdout);
     }
   }
 }
