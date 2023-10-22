@@ -351,6 +351,92 @@ SemiTokenTreeNode create_top_node(Token *tokens, size_t tok_length) {
   return top_node;
 }
 
+struct parenthesisPair {
+  size_t open_index;
+  size_t close_index;
+  size_t depth;
+};
+
+int compare_pair_depth(const void *a, const void *b) {
+  size_t depth_a = ((struct parenthesisPair *)a)->depth;
+  size_t depth_b = ((struct parenthesisPair *)b)->depth;
+  return ((int) depth_a) - ((int) depth_b);
+}
+
+// Use pair-finding and depth-mapping to parse parentheses
+SemiTokenTreeNode parse_parentheses(SemiTokenTreeNode top_node) {
+  size_t current_depth = 0;
+  size_t *depth_map = malloc(sizeof(size_t) * top_node.content.node.value.contents.contents_len); // The parenthesis depth of every node in the list
+  size_t *open_para_positions = malloc(sizeof(size_t) * top_node.content.node.value.contents.contents_len / 2); // Array of opening parentheses positions (first half of pair)
+  size_t *close_para_positions = malloc(sizeof(size_t) * top_node.content.node.value.contents.contents_len / 2); // Array of closing parentheses positions (second half of pair)
+  size_t j = 0;
+  size_t *open_para_stack = malloc(sizeof(size_t) * top_node.content.node.value.contents.contents_len / 2); // LIFO stack of opening parenthesis positions
+  size_t stack_pos = -1;
+
+  // Match pairs and map depths
+  for (size_t i = 0; i < top_node.content.node.value.contents.contents_len; i++) {
+    *(depth_map + i) = current_depth;
+    if (top_node.content.node.value.contents.nodes[i].content.token.token_type == OPEN_PARA) {
+      *(open_para_stack + ++stack_pos) = i;
+      current_depth++;
+    } else if (top_node.content.node.value.contents.nodes[i].content.token.token_type == CLOSE_PARA) {
+      *(open_para_positions + j) = *(open_para_stack + stack_pos--);
+      *(close_para_positions + j) = i;
+      j++;
+      current_depth--;
+    }
+  }
+
+  // Sort parenthesis pairs
+  struct parenthesisPair *pairs = malloc(sizeof(struct parenthesisPair) * j);
+  for (size_t i = 0; i < j; i++) {
+    pairs[i].open_index = *(open_para_positions + i);
+    pairs[i].close_index = *(close_para_positions + i);
+    pairs[i].depth = *(depth_map + i);
+  }
+  qsort(pairs, j, sizeof(struct parenthesisPair), compare_pair_depth);
+
+  // Parse parentheses, one depth level at a time
+  SemiTokenTreeNode *nodes = top_node.content.node.value.contents.nodes;
+  current_depth = 0;
+  size_t k = 0;
+  size_t new_contents_length = top_node.content.node.value.contents.contents_len;
+  
+  while (k < j) {
+    size_t open_index = (pairs + k)->open_index;
+    size_t close_index = (pairs + k)->close_index;
+    size_t internal_length = close_index - open_index - 1;
+    // Collapse parenthesis pairs and contents into a single node
+    SemiTokenTreeNode *inside_nodes = malloc(sizeof(SemiTokenTreeNode) * internal_length);
+    memcpy(inside_nodes, nodes + open_index + 1, internal_length * sizeof(SemiTokenTreeNode));
+    (nodes + open_index)->isToken = false;
+    (nodes + open_index)->content.node.nodeType = STT_PARA;
+    (nodes + open_index)->content.node.value.contents.nodes = inside_nodes;
+    (nodes + open_index)->content.node.value.contents.contents_len = internal_length;
+    memmove(nodes + open_index + 1, nodes + close_index + 1, (top_node.content.node.value.contents.contents_len - close_index - 1) * sizeof(SemiTokenTreeNode));
+    new_contents_length -= internal_length + 1;
+    
+    // Move pair indexes to fit their current places
+    if (k != j-1) {
+      for (size_t i = k; i < j; i++) {
+        if (pairs[i].open_index > pairs[k].open_index) {
+          pairs[i].open_index -= internal_length + 1;
+          pairs[i].close_index -= internal_length + 1;
+        }
+      }
+    }
+  
+    k++;
+  }
+
+  SemiTokenTreeNode new_top_node;
+  new_top_node.isToken = false;
+  new_top_node.content.node.nodeType = STT_PARA;
+  new_top_node.content.node.value.contents.nodes = nodes;
+  new_top_node.content.node.value.contents.contents_len = new_contents_length;
+  return new_top_node;
+}
+
 void print_node(SemiTokenTreeNode node) {
   if (node.isToken) print_token(node.content.token);
   else {
@@ -374,6 +460,7 @@ int main(void) {
   print_tokens(tokens, tok_length);
   putc('\n', stdout);
   SemiTokenTreeNode top_node = create_top_node(tokens, tok_length);
+  top_node = parse_parentheses(top_node);
   print_node(top_node);
   putc('\n', stdout);
   return 0;
