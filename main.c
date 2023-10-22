@@ -77,10 +77,7 @@ double ch_to_digit(char ch) {
 
 #define PREV_TOKEN_TYPE (tok_pos == 0 ? ERR_TOK : (tokens + tok_pos - 1)->token_type)
 
-#define ADD_NUM_TOKEN() do { \
-  if (PREV_TOKEN_TYPE == NEG_OP) *(tokens + tok_pos - 1) = (Token) {NUM, last_tok_pos, .v.num_value = -numValue}; \
-  else *(tokens + tok_pos++) = (Token) {NUM, last_tok_pos, .v.num_value = numValue}; \
-} while (0)
+#define ADD_NUM_TOKEN() *(tokens + tok_pos++) = (Token) {NUM, last_tok_pos, .v.num_value = numValue}
 
 #define ADD_OPEN_PARA_TOKEN() *(tokens + tok_pos++) = (Token) {OPEN_PARA, i, .v.str = NULL}
 
@@ -309,9 +306,9 @@ struct SemiTokenTreeNode {
   union {
     struct {
       enum {STT_OP, STT_PARA, STT_NUM, STT_VAR, STT_FUNC, STT_ERROR} nodeType;
+      enum {STT_ADD, STT_SUB, STT_MUL, STT_DIV, STT_EXP, STT_NEG, STT_FACTORIAL} opType;
       char *name;
       union {
-        enum {STT_ADD, STT_SUB, STT_MUL, STT_DIV, STT_EXP, STT_NEG, STT_FACTORIAL} binOpType;
         double num_value;
         struct {
           size_t contents_len;
@@ -454,6 +451,37 @@ SemiTokenTreeNode parse_parentheses(SemiTokenTreeNode top_node) {
   return new_top_node;
 }
 
+#define IS_FACT_TOK_NODE(node) (node.isToken && node.content.token.token_type == FACTORIAL_OP)
+
+// Parse operations
+// Order of operations: Factorials, Exponents, Multiplication, Division, Addition, Subtraction
+SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
+  SemiTokenTreeNode *nodes = top_node.content.node.value.contents.nodes;
+  size_t new_contents_len = top_node.content.node.value.contents.contents_len;
+  size_t i = 0;
+  
+  while (i < top_node.content.node.value.contents.contents_len) {
+    if (i == top_node.content.node.value.contents.contents_len-1 ? 0 : IS_FACT_TOK_NODE(nodes[i+1])) {
+      SemiTokenTreeNode factorial_node;
+      factorial_node.isToken = false;
+      factorial_node.content.node.nodeType = STT_OP;
+      factorial_node.content.node.opType = STT_FACTORIAL;
+      factorial_node.content.node.value.contents.nodes = malloc(sizeof(SemiTokenTreeNode));
+      memcpy(factorial_node.content.node.value.contents.nodes, nodes + i, sizeof(SemiTokenTreeNode));
+      factorial_node.content.node.value.contents.contents_len = 1;
+      nodes[i] = factorial_node;
+      memmove(nodes + i + 1, nodes + i + 2, (new_contents_len-- - i - 1) * sizeof(SemiTokenTreeNode));
+    } else i++;
+  }
+  
+  SemiTokenTreeNode new_top_node;
+  new_top_node.isToken = false;
+  new_top_node.content.node.nodeType = STT_PARA;
+  new_top_node.content.node.value.contents.nodes = nodes;
+  new_top_node.content.node.value.contents.contents_len = new_contents_len;
+  return new_top_node;
+}
+
 void print_node(SemiTokenTreeNode node) {
   if (node.isToken) print_token(node.content.token);
   else {
@@ -476,6 +504,11 @@ void print_node(SemiTokenTreeNode node) {
     } else if (node.content.node.nodeType == STT_ERROR) {
       fputs(error_message(node.content.node.value.error_value), stdout);
       return;
+    } else if (node.content.node.nodeType == STT_OP) {
+      if (node.content.node.opType == STT_FACTORIAL) {
+        print_node(*node.content.node.value.contents.nodes);
+        putc('!', stdout);
+      }
     }
   }
 }
@@ -488,6 +521,9 @@ int main(void) {
   putc('\n', stdout);
   SemiTokenTreeNode top_node = create_top_node(tokens, tok_length);
   top_node = parse_parentheses(top_node);
+  print_node(top_node);
+  putc('\n', stdout);
+  top_node = parse_operations(top_node);
   print_node(top_node);
   putc('\n', stdout);
   return 0;
