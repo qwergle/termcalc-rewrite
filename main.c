@@ -406,6 +406,9 @@ SemiTokenTreeNode parse_parentheses(SemiTokenTreeNode top_node) {
     pairs[i].depth = *(depth_map + i);
   }
   qsort(pairs, j, sizeof(struct parenthesisPair), compare_pair_depth);
+  free(open_para_positions);
+  free(close_para_positions);
+  free(open_para_stack);
 
   // Parse parentheses, one depth level at a time
   SemiTokenTreeNode *nodes = top_node.content.node.value.contents.nodes;
@@ -452,6 +455,8 @@ SemiTokenTreeNode parse_parentheses(SemiTokenTreeNode top_node) {
 }
 
 #define IS_FACT_TOK_NODE(node) (node.isToken && node.content.token.token_type == FACTORIAL_OP)
+#define IS_OP_TOK_NODE(node, op) (node.isToken && node.content.token.token_type == BIN_OP && node.content.token.v.bin_op_type == op)
+#define IS_NEG_TOK_NODE(node) (node.isToken && node.content.token.token_type == NEG_OP)
 
 // Parse operations
 // Order of operations: Factorials, Exponents, Multiplication, Division, Addition, Subtraction
@@ -459,7 +464,15 @@ SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
   SemiTokenTreeNode *nodes = top_node.content.node.value.contents.nodes;
   size_t new_contents_len = top_node.content.node.value.contents.contents_len;
   size_t i = 0;
-  
+
+  // First, parsing inside of the parentheses
+  while (i < new_contents_len) {
+    if (!nodes[i].isToken && nodes[i].content.node.nodeType == STT_PARA) nodes[i] = parse_operations(nodes[i]);
+    i++;
+  }
+  i = 0;
+
+  // Factorials
   while (i < top_node.content.node.value.contents.contents_len) {
     if (i == top_node.content.node.value.contents.contents_len-1 ? 0 : IS_FACT_TOK_NODE(nodes[i+1])) {
       SemiTokenTreeNode factorial_node;
@@ -468,10 +481,61 @@ SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
       factorial_node.content.node.opType = STT_FACTORIAL;
       factorial_node.content.node.value.contents.nodes = malloc(sizeof(SemiTokenTreeNode));
       memcpy(factorial_node.content.node.value.contents.nodes, nodes + i, sizeof(SemiTokenTreeNode));
-      factorial_node.content.node.value.contents.contents_len = 1;
       nodes[i] = factorial_node;
       memmove(nodes + i + 1, nodes + i + 2, (new_contents_len-- - i - 1) * sizeof(SemiTokenTreeNode));
     } else i++;
+  }
+
+  
+  // Exponents
+  // Looking for value^value or value^-value
+  // Going backwards through the tree to tag the exponent expressions in backwards order, thus collapsing them in descending order of depth within the chain of exponents
+  i = new_contents_len-1;
+  size_t j = 0;
+  size_t *exp_start_positions = malloc(new_contents_len * sizeof(size_t));
+  bool *is_negative_exponent = malloc(new_contents_len * sizeof(size_t));
+  
+  while (i > 1) {
+    if (!nodes[i].isToken && IS_OP_TOK_NODE(nodes[i-1], EXP) && !nodes[i-2].isToken) {
+      *(exp_start_positions + j) = i - 2;
+      *(is_negative_exponent + j) = false;
+      j++;
+    }
+    if (i > 2) if (!nodes[i].isToken && IS_NEG_TOK_NODE(nodes[i-1]) && IS_OP_TOK_NODE(nodes[i-2], EXP) && !nodes[i-3].isToken) {
+      *(exp_start_positions + j) = i - 3;
+      *(is_negative_exponent + j) = true;
+      j++;
+    }
+    i--;
+  }
+  // Collapse exponent expressions into nodes
+  i = 0;
+  while (i < j) {
+    size_t start_pos = *(exp_start_positions + i);
+    
+    SemiTokenTreeNode exponent_node;
+    exponent_node.isToken = false;
+    exponent_node.content.node.nodeType = STT_OP;
+    exponent_node.content.node.opType = STT_EXP;
+    exponent_node.content.node.value.contents.nodes = malloc(2 * sizeof(SemiTokenTreeNode));
+    memcpy(exponent_node.content.node.value.contents.nodes, nodes + start_pos, sizeof(SemiTokenTreeNode));
+    if (!(*(is_negative_exponent + i))) { // if it is x^y
+      memcpy(exponent_node.content.node.value.contents.nodes + 1, nodes + start_pos + 2, sizeof(SemiTokenTreeNode));
+      memmove(nodes + start_pos + 1, nodes + start_pos + 2, (new_contents_len - start_pos - 2) * sizeof(SemiTokenTreeNode));
+      new_contents_len -= 2;
+    } else { // if it is x^-y
+      SemiTokenTreeNode negative_node;
+      negative_node.isToken = false;
+      negative_node.content.node.nodeType = STT_OP;
+      negative_node.content.node.opType = STT_NEG;
+      negative_node.content.node.value.contents.nodes = malloc(sizeof(SemiTokenTreeNode));
+      memcpy(negative_node.content.node.value.contents.nodes, nodes + start_pos + 3, sizeof(SemiTokenTreeNode));
+      *(exponent_node.content.node.value.contents.nodes + 1) = negative_node;
+      memmove(nodes + start_pos + 1, nodes + start_pos + 2, (new_contents_len - start_pos - 3) * sizeof(SemiTokenTreeNode));
+      new_contents_len -= 3;
+    }
+    *(nodes + start_pos) = exponent_node;
+    i++;
   }
   
   SemiTokenTreeNode new_top_node;
@@ -508,6 +572,35 @@ void print_node(SemiTokenTreeNode node) {
       if (node.content.node.opType == STT_FACTORIAL) {
         print_node(*node.content.node.value.contents.nodes);
         putc('!', stdout);
+      } else if (node.content.node.opType == STT_NEG) {
+        putc('{', stdout);
+        putc('-', stdout);
+        print_node(*node.content.node.value.contents.nodes);
+        putc('}', stdout);
+      } else {
+        putc('{', stdout);
+        print_node(*node.content.node.value.contents.nodes);
+        putc(' ', stdout);
+        switch (node.content.node.opType) {
+          case STT_ADD:
+            putc('+', stdout);
+            break;
+          case STT_SUB:
+            putc('-', stdout);
+            break;
+          case STT_MUL:
+            putc('*', stdout);
+            break;
+          case STT_DIV:
+            putc('/', stdout);
+            break;
+          case STT_EXP:
+            putc('^', stdout);
+            break;
+        }
+        putc(' ', stdout);
+        print_node(*(node.content.node.value.contents.nodes + 1));
+        putc('}', stdout);
       }
     }
   }
