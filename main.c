@@ -537,6 +537,23 @@ SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
     *(nodes + start_pos) = exponent_node;
     i++;
   }
+
+  // Negation
+  i = top_node.content.node.value.contents.contents_len-1;
+  while (i > 0) {
+    if (!nodes[i].isToken && IS_NEG_TOK_NODE(nodes[i-1])) {
+      SemiTokenTreeNode negative_node;
+      negative_node.isToken = false;
+      negative_node.content.node.nodeType = STT_OP;
+      negative_node.content.node.opType = STT_NEG;
+      negative_node.content.node.value.contents.nodes = malloc(sizeof(SemiTokenTreeNode));
+    memcpy(negative_node.content.node.value.contents.nodes, nodes + i, sizeof(SemiTokenTreeNode));
+      *(nodes + i - 1) = negative_node;
+      if (i != top_node.content.node.value.contents.contents_len-1) memmove(nodes + i, nodes + i + 1, (new_contents_len - i) * sizeof(SemiTokenTreeNode));
+      new_contents_len -= 1;
+    }
+    i--;
+  }
   
   SemiTokenTreeNode new_top_node;
   new_top_node.isToken = false;
