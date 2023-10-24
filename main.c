@@ -554,6 +554,28 @@ SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
     }
     i--;
   }
+
+  // Looping through the binary operations
+  int op = DIV;
+  while (op >= ADD) {
+    i = 0;
+    while (i < top_node.content.node.value.contents.contents_len-2) {
+      if (!nodes[i].isToken && IS_OP_TOK_NODE(nodes[i+1], op) && !nodes[i+2].isToken) {
+        SemiTokenTreeNode binary_node;
+        binary_node.isToken = false;
+        binary_node.content.node.nodeType = STT_OP;
+        binary_node.content.node.opType = op; // enums are basically just numbers with names, and the order lines up for token operations and STT operations, so this hack works
+        binary_node.content.node.value.contents.nodes = malloc(sizeof(SemiTokenTreeNode) * 2);
+        memcpy(binary_node.content.node.value.contents.nodes, nodes + i, sizeof(SemiTokenTreeNode));
+        memcpy(binary_node.content.node.value.contents.nodes + 1, nodes + i + 2, sizeof(SemiTokenTreeNode));
+        memmove(nodes + i + 1, nodes + i + 2, (new_contents_len - i - 2) * sizeof(SemiTokenTreeNode));
+        *(nodes + i) = binary_node;
+        new_contents_len -= 2;
+      }
+      i++;
+    }
+    op--;
+  }
   
   SemiTokenTreeNode new_top_node;
   new_top_node.isToken = false;
