@@ -44,20 +44,6 @@ struct Token {
 
 typedef struct Token Token;
 
-char **join_str_arrays(char **a, char **b, size_t a_length, size_t b_length) {
-  char **out = malloc(sizeof(char*) * (a_length + b_length));
-  size_t pos = 0;
-  while (pos < a_length) {
-    *(out + pos) = *(a + pos);
-    pos++;
-  }
-  while (pos < a_length + b_length) {
-    *(out + pos) = *(b + pos - a_length);
-    pos++;
-  }
-  return out;
-}
-
 double ch_to_digit(char ch) {
   if (ch == '0') return 0;
   if (ch == '1') return 1;
@@ -127,6 +113,8 @@ double ch_to_digit(char ch) {
 #define ADD_NEGATIVE_SIGN_TOKEN() *(tokens + tok_pos++) = (Token) {NEG_OP, i, .v.num_value = 0}
 
 #define ADD_FACTORIAL_TOKEN() *(tokens + tok_pos++) = (Token) {FACTORIAL_OP, i, .v.num_value = 0}
+
+#define IS_LAST_TOK_FUNC ((tokens + tok_pos - 1)->token_type == OPEN_PARA && (tokens + tok_pos - 1)->v.str != NULL)
 
 
 #define INCR_LENGTH 32
@@ -225,7 +213,7 @@ Token *tokenizer(char *str, size_t *tokens_length) {
       // Throw errors
       if (PREV_TOKEN_TYPE == BIN_OP && ch == ')') TOKENIZER_ERROR(ERR_NO_SECOND_OPERAND_FOUND);
       if (PREV_TOKEN_TYPE == NUM && ch == '(') TOKENIZER_ERROR(ERR_NO_IMPLICIT_MULTIPLICATION);
-      if (PREV_TOKEN_TYPE == WORD && ch == ')') TOKENIZER_ERROR(ERR_NO_FUNCTION_INPUT_FOUND);
+      if (IS_LAST_TOK_FUNC && ch == ')') TOKENIZER_ERROR(ERR_NO_FUNCTION_INPUT_FOUND);
 
       // Function stuff
       if (PREV_TOKEN_TYPE == WORD && ch == '(') (tokens + tok_pos - 1)->token_type = OPEN_PARA;
@@ -256,17 +244,6 @@ Token *tokenizer(char *str, size_t *tokens_length) {
     }
   }
   return tokens;
-}
-
-char *error_message(size_t value) {
-  if (value == ERR_NO_IMPLICIT_MULTIPLICATION) return "No implicit multiplication.";
-  else if (value == ERR_NO_DOUBLE_OPERATOR) return "No double operators.";
-  else if (value == ERR_NO_SECOND_OPERAND_FOUND) return "No second operand found.";
-  else if (value == ERR_MULTIPLE_DECIMAL_POINTS) return "No double decimal points.";
-  else if (value == ERR_NO_FUNCTION_INPUT_FOUND) return "No function input found.";
-  else if (value == ERR_NO_OPERAND_FOUND) return "No operand found.";
-  else if (value == ERR_UNCLOSED_PARENTHESIS) return "No unclosed parentheses.";
-  return "No error message found.";
 }
 
 void print_token(Token token) {
@@ -384,10 +361,10 @@ SemiTokenTreeNode parse_parentheses(SemiTokenTreeNode top_node) {
   // Match pairs and map depths
   for (size_t i = 0; i < top_node.content.node.value.contents.contents_len; i++) {
     *(depth_map + i) = current_depth;
-    if (top_node.content.node.value.contents.nodes[i].content.token.token_type == OPEN_PARA) {
+    if (top_node.content.node.value.contents.nodes[i].isToken && top_node.content.node.value.contents.nodes[i].content.token.token_type == OPEN_PARA) {
       *(open_para_stack + stack_pos++) = i;
       current_depth++;
-    } else if (top_node.content.node.value.contents.nodes[i].content.token.token_type == CLOSE_PARA) {
+    } else if (top_node.content.node.value.contents.nodes[i].isToken && top_node.content.node.value.contents.nodes[i].content.token.token_type == CLOSE_PARA) {
       *(open_para_positions + j) = *(open_para_stack + stack_pos-- - 1);
       *(close_para_positions + j) = i;
       j++;
@@ -396,7 +373,7 @@ SemiTokenTreeNode parse_parentheses(SemiTokenTreeNode top_node) {
   }
 
   // Handle if there are unclosed opening parentheses
-  if (stack_pos) return error_node(ERR_UNCLOSED_PARENTHESIS);
+  if (current_depth > 0) return error_node(ERR_UNCLOSED_PARENTHESIS);
 
   // Sort parenthesis pairs
   struct parenthesisPair *pairs = malloc(sizeof(struct parenthesisPair) * j);
@@ -454,6 +431,67 @@ SemiTokenTreeNode parse_parentheses(SemiTokenTreeNode top_node) {
   return new_top_node;
 }
 
+void print_node(SemiTokenTreeNode node) {
+  if (node.isToken) print_token(node.content.token);
+  else {
+    if (node.content.node.nodeType == STT_NUM) printf("{%g}", node.content.node.value.num_value);
+    else if (node.content.node.nodeType == STT_VAR) printf("{%s}", node.content.node.name);
+    else if (node.content.node.nodeType == STT_PARA) {
+      putc('{', stdout);
+      for (size_t i = 0; i < node.content.node.value.contents.contents_len; i++) {
+        putc(' ', stdout);
+        print_node(*(node.content.node.value.contents.nodes + i));
+      }
+      fputs(" }", stdout);
+    } else if (node.content.node.nodeType == STT_FUNC) {
+      printf("%s{ ", node.content.node.name);
+      for (size_t i = 0; i < node.content.node.value.contents.contents_len; i++) {
+        print_node(*(node.content.node.value.contents.nodes + i));
+        putc(' ', stdout);
+      }
+      putc('}', stdout);
+    } else if (node.content.node.nodeType == STT_ERROR) {
+      fputs(error_message(node.content.node.value.error_value), stdout);
+      return;
+    } else if (node.content.node.nodeType == STT_OP) {
+      if (node.content.node.opType == STT_FACTORIAL) {
+        print_node(*node.content.node.value.contents.nodes);
+        putc('!', stdout);
+      } else if (node.content.node.opType == STT_NEG) {
+        putc('{', stdout);
+        putc('-', stdout);
+        print_node(*node.content.node.value.contents.nodes);
+        putc('}', stdout);
+      } else {
+        putc('{', stdout);
+        print_node(*node.content.node.value.contents.nodes);
+        putc(' ', stdout);
+        switch (node.content.node.opType) {
+          case STT_ADD:
+            putc('+', stdout);
+            break;
+          case STT_SUB:
+            putc('-', stdout);
+            break;
+          case STT_MUL:
+            putc('*', stdout);
+            break;
+          case STT_DIV:
+            putc('/', stdout);
+            break;
+          case STT_EXP:
+            putc('^', stdout);
+            break;
+        }
+        putc(' ', stdout);
+        print_node(*(node.content.node.value.contents.nodes + 1));
+        putc('}', stdout);
+      }
+    }
+  }
+}
+
+
 #define IS_FACT_TOK_NODE(node) (node.isToken && node.content.token.token_type == FACTORIAL_OP)
 #define IS_OP_TOK_NODE(node, op) (node.isToken && node.content.token.token_type == BIN_OP && node.content.token.v.bin_op_type == op)
 #define IS_NEG_TOK_NODE(node) (node.isToken && node.content.token.token_type == NEG_OP)
@@ -467,7 +505,9 @@ SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
 
   // First, parsing inside of the parentheses
   while (i < new_contents_len) {
-    if (!nodes[i].isToken && nodes[i].content.node.nodeType == STT_PARA) nodes[i] = parse_operations(nodes[i]);
+    if (!nodes[i].isToken && nodes[i].content.node.nodeType == STT_PARA) {
+      nodes[i] = parse_operations(nodes[i]);
+    }
     i++;
   }
   i = 0;
@@ -559,20 +599,27 @@ SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
   int op = DIV;
   while (op >= ADD) {
     i = 0;
-    while (i < top_node.content.node.value.contents.contents_len-2) {
-      if (!nodes[i].isToken && IS_OP_TOK_NODE(nodes[i+1], op) && !nodes[i+2].isToken) {
+    size_t *op_positions = malloc(new_contents_len * sizeof(size_t));
+    size_t op_pos = 0;
+    j = new_contents_len;
+    while (j > 0) {
+      i = j-1;
+      bool first_node_is_value = !nodes[i].isToken;
+      bool second_node_is_op = (i+2 < new_contents_len) ? IS_OP_TOK_NODE(nodes[i+1], op) : false;
+      bool third_node_is_value = (i+2 < new_contents_len) ? !nodes[i+2].isToken : false;
+      if (first_node_is_value && second_node_is_op && third_node_is_value) {
         SemiTokenTreeNode binary_node;
         binary_node.isToken = false;
         binary_node.content.node.nodeType = STT_OP;
         binary_node.content.node.opType = op; // enums are basically just numbers with names, and the order lines up for token operations and STT operations, so this hack works
         binary_node.content.node.value.contents.nodes = malloc(sizeof(SemiTokenTreeNode) * 2);
-        memcpy(binary_node.content.node.value.contents.nodes, nodes + i, sizeof(SemiTokenTreeNode));
-        memcpy(binary_node.content.node.value.contents.nodes + 1, nodes + i + 2, sizeof(SemiTokenTreeNode));
-        memmove(nodes + i + 1, nodes + i + 2, (new_contents_len - i - 2) * sizeof(SemiTokenTreeNode));
+        memcpy(binary_node.content.node.value.contents.nodes, nodes + i, sizeof(SemiTokenTreeNode)); // move first value to first branch of binary node
+        memcpy(binary_node.content.node.value.contents.nodes + 1, nodes + i + 2, sizeof(SemiTokenTreeNode)); // move second value to second branch of binary node
+        memmove(nodes + i + 1, nodes + i + 3, (new_contents_len - i - 2) * sizeof(SemiTokenTreeNode));
         *(nodes + i) = binary_node;
         new_contents_len -= 2;
       }
-      i++;
+      j--;
     }
     op--;
   }
@@ -585,78 +632,125 @@ SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
   return new_top_node;
 }
 
-void print_node(SemiTokenTreeNode node) {
-  if (node.isToken) print_token(node.content.token);
-  else {
-    if (node.content.node.nodeType == STT_NUM) printf("{%g}", node.content.node.value.num_value);
-    else if (node.content.node.nodeType == STT_VAR) printf("{%s}", node.content.node.name);
-    else if (node.content.node.nodeType == STT_PARA) {
-      putc('{', stdout);
-      for (size_t i = 0; i < node.content.node.value.contents.contents_len; i++) {
-        putc(' ', stdout);
-        print_node(*(node.content.node.value.contents.nodes + i));
+#define NODE_IS_OP(n, op) (n.content.node.nodeType == STT_OP && (n.content.node.opType == op))
+#define NODE_TYPE(n) (n.content.node.nodeType)
+#define NODE_HAS_SINGLE_CHILD(node) (NODE_IS_OP(node, STT_FACTORIAL) || NODE_IS_OP(node, STT_NEG) || NODE_TYPE(node) == STT_PARA || NODE_TYPE(node) == STT_FUNC)
+
+#define TOP_NODE (**(stack_of_pointers + stack_pos))
+#define TOP_NODE_POINTER (*(stack_of_pointers + stack_pos))
+#define PREV_NODE (**(stack_of_pointers + stack_pos - 1))
+#define PREV_NODE_POINTER (*(stack_of_pointers + stack_pos - 1))
+
+#define TOP_NODE_TYPE NODE_TYPE(TOP_NODE)
+#define TOP_NODE_OP_TYPE (TOP_NODE.content.node.opType)
+#define PREV_NODE_TYPE NODE_TYPE(PREV_NODE)
+#define PREV_NODE_WAS(op) NODE_IS_OP(PREV_NODE, op)
+#define PREV_NODE_HAD_SINGLE_CHILD NODE_HAS_SINGLE_CHILD(PREV_NODE)
+
+#define RESIZE_STACK_IF_NEEDED() do { \
+  if (stack_pos == stack_size-1) { \
+    stack_size += INCR_LENGTH; \
+    stack_of_pointers = realloc(stack_of_pointers, stack_size * sizeof(SemiTokenTreeNode*)); \
+  } \
+} while (0)
+#define RESIZE_CODE_IF_NEEDED() do { \
+  if (code_pos == code.length-1) { \
+    code.length += INCR_LENGTH; \
+    code.instructions = realloc(code.instructions, code.length * sizeof(VM_Instruction)); \
+  } \
+} while (0)
+
+// Compiles the complete AST into VM code
+VM_Code compile(SemiTokenTreeNode node) {
+  VM_Code code;
+  code.length = 32;
+  code.instructions = malloc(code.length * sizeof(VM_Instruction));
+  size_t code_pos = 0;
+  
+  // Current path along the tree
+  size_t stack_size = 32;
+  SemiTokenTreeNode **stack_of_pointers = malloc(sizeof(SemiTokenTreeNode*) * stack_size);
+  size_t stack_pos = 1;
+  *stack_of_pointers = &node;
+  *(stack_of_pointers + 1) = node.content.node.value.contents.nodes;
+  enum {LEFT_DOWN, RIGHT_DOWN, UP} state = LEFT_DOWN;
+  
+  /*
+  stack_of_pointers is the series of branches leading to the current node/TOP_NODE. It is a path down the tree to the current node/TOP_NODE.
+  Go LEFT_DOWN until you hit the end of the tree. Then, go to the parent node and indicate RIGHT_DOWN so that it goes on the right path rather than the left.
+  If the end of the tree is reached but you're on the right branch of the parent node, indicate UP so that it goes up instead of continuing to go down.
+  Generate the VM code along the way.
+  */
+
+  while (stack_pos > 0) {
+    if (TOP_NODE_TYPE == STT_NUM || TOP_NODE_TYPE == STT_VAR) { // on reaching end of tree
+      RESIZE_CODE_IF_NEEDED();
+      VM_Object obj;
+      obj.objectType = TOP_NODE_TYPE == STT_NUM ? NUMBER : VARIABLE;
+      if (TOP_NODE_TYPE == STT_NUM) obj.value.number = TOP_NODE.content.node.value.num_value;
+      else obj.value.name = TOP_NODE.content.node.name;
+      
+      *(code.instructions + code_pos++) = (VM_Instruction) {PUSH, 0, 0, obj};
+      
+      if (state == LEFT_DOWN && !PREV_NODE_HAD_SINGLE_CHILD) { // first branch
+        TOP_NODE_POINTER++;
+        state = RIGHT_DOWN;
+      } else { // on right branch or only branch (last branch)
+        state = UP;
+        stack_pos--;
       }
-      fputs(" }", stdout);
-    } else if (node.content.node.nodeType == STT_FUNC) {
-      printf("%s{ ", node.content.node.name);
-      for (size_t i = 0; i < node.content.node.value.contents.contents_len; i++) {
-        print_node(*(node.content.node.value.contents.nodes + i));
-        putc(' ', stdout);
-      }
-      putc('}', stdout);
-    } else if (node.content.node.nodeType == STT_ERROR) {
-      fputs(error_message(node.content.node.value.error_value), stdout);
-      return;
-    } else if (node.content.node.nodeType == STT_OP) {
-      if (node.content.node.opType == STT_FACTORIAL) {
-        print_node(*node.content.node.value.contents.nodes);
-        putc('!', stdout);
-      } else if (node.content.node.opType == STT_NEG) {
-        putc('{', stdout);
-        putc('-', stdout);
-        print_node(*node.content.node.value.contents.nodes);
-        putc('}', stdout);
-      } else {
-        putc('{', stdout);
-        print_node(*node.content.node.value.contents.nodes);
-        putc(' ', stdout);
-        switch (node.content.node.opType) {
-          case STT_ADD:
-            putc('+', stdout);
-            break;
-          case STT_SUB:
-            putc('-', stdout);
-            break;
-          case STT_MUL:
-            putc('*', stdout);
-            break;
-          case STT_DIV:
-            putc('/', stdout);
-            break;
-          case STT_EXP:
-            putc('^', stdout);
-            break;
+    } else {
+      if (state == UP) {
+        // code generation
+        RESIZE_CODE_IF_NEEDED();
+        if (TOP_NODE_TYPE == STT_OP) {
+          int op = 0;
+          if (TOP_NODE_OP_TYPE == STT_ADD) op = VM_ADD;
+          else if (TOP_NODE_OP_TYPE == STT_SUB) op = VM_SUB;
+          else if (TOP_NODE_OP_TYPE == STT_MUL) op = VM_MUL;
+          else if (TOP_NODE_OP_TYPE == STT_DIV) op = VM_DIV;
+          else if (TOP_NODE_OP_TYPE == STT_EXP) op = VM_EXP;
+          else if (TOP_NODE_OP_TYPE == STT_NEG) op = VM_NEG;
+          else if (TOP_NODE_OP_TYPE == STT_FACTORIAL) op = VM_FACTORIAL;
+          
+          *(code.instructions + code_pos++) = (VM_Instruction) {OPERATION, op, 0, 0};
+        } else if (TOP_NODE_TYPE == STT_FUNC) {
+          *(code.instructions + code_pos++) = (VM_Instruction) {FUNC, 0, TOP_NODE.content.node.name, 0};
+        } else if (TOP_NODE_TYPE == STT_PARA) ; // do nothing
+        
+        // tree traversal
+        if (TOP_NODE_POINTER == PREV_NODE.content.node.value.contents.nodes+1 || PREV_NODE_HAD_SINGLE_CHILD) { // if on right branch or only branch (last branch)
+          stack_pos--; // keep moving up through the tree
+        } else { // if on left branch (first branch)
+          TOP_NODE_POINTER++;
+          state = RIGHT_DOWN;
         }
-        putc(' ', stdout);
-        print_node(*(node.content.node.value.contents.nodes + 1));
-        putc('}', stdout);
+      } else {
+        // tree traversal
+        RESIZE_STACK_IF_NEEDED();
+        *(stack_of_pointers + ++stack_pos) = TOP_NODE.content.node.value.contents.nodes;
+        if (state == RIGHT_DOWN) state = LEFT_DOWN;
       }
     }
   }
+
+  code.length = code_pos;
+  return code;
 }
 
 int main(void) {
   size_t tok_length = 32;
   char *str = getstr();
   Token *tokens = tokenizer(str, &tok_length);
-  print_tokens(tokens, tok_length);
-  putc('\n', stdout);
   SemiTokenTreeNode top_node = create_top_node(tokens, tok_length);
   top_node = parse_parentheses(top_node);
-  print_node(top_node);
-  putc('\n', stdout);
   top_node = parse_operations(top_node);
-  print_node(top_node);
-  putc('\n', stdout);
+  VM_Code code = compile(top_node);
+  
+  char *variable_names[] = {"pi", "e", "phi"};
+  double variable_values[] = {M_PI, M_E, (1.0 + sqrt(5.0)) / 2.0};
+  size_t variables_len = 3;
+  
+  printf("%g", VM_Exec(code, variable_names, variable_values, variables_len));
   return 0;
 }

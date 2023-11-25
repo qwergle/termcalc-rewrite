@@ -1,14 +1,19 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stddef.h>
 #include <math.h>
 #include "vm.h"
 
+
+#define SIZE_T_MAX ((size_t)(-1))
+#define STR_EQ(a,b) (strcmp(a,b) == 0)
+
 // Execute stack machine instructions
-double VM_Exec(VM_Code code, double fvars[]) {
+double VM_Exec(VM_Code code, char **var_names, double *var_values, size_t var_len) {
   size_t i = 0;
-  double stack[512];
-  int stack_pos = -1;
+  double *stack = malloc(code.length * sizeof(double));
+  size_t stack_pos = SIZE_T_MAX;
   while (i < code.length) {
     VM_Instruction instruction = *(code.instructions + i);
     if (instruction.instructionType == PUSH) {
@@ -16,53 +21,68 @@ double VM_Exec(VM_Code code, double fvars[]) {
       if (object.objectType == NUMBER) {
         stack[++stack_pos] = object.value.number;
       } else if (object.objectType == VARIABLE) {
-        stack[++stack_pos] = fvars[object.value.variableIndex];
+        double value = NAN;
+        for (size_t j = 0; j < var_len; j++) {
+          if (strcmp(var_names[j], object.value.name) == 0) value = *(var_values + j);
+        }
+        if (isnan(value)) return NAN; // if variable does not exist, return NAN
+        else stack[++stack_pos] = value;
       }
     } else if (instruction.instructionType == OPERATION) {
       register int op_type = instruction.opType;
-      register double left = stack[stack_pos - 1];
+      if (stack_pos == SIZE_T_MAX) return NAN; // if nothing has been pushed, return NAN
+      register double left = stack_pos >= 1 ? stack[stack_pos - 1] : stack[stack_pos]; // if only one item has been added to stack, that item, otherwise second-to-top on stack
       register double right = stack[stack_pos];
-      stack_pos--;
-      if (op_type == 0) {
-        stack[stack_pos] = pow(left, right);
-      } else if (op_type == 1) {
-        stack[stack_pos] = left*right;
-      } else if (op_type == 2) {
-        stack[stack_pos] = left/right;
-      } else if (op_type == 3) {
-        stack[stack_pos] = left+right;
-      } else if (op_type == 4) {
-        stack[stack_pos] = left-right;
-      } else if (op_type == 5) {
-        stack[stack_pos] = fmod(left, right);
+      if (op_type == VM_EXP) {
+        stack[--stack_pos] = pow(left, right);
+      } else if (op_type == VM_MUL) {
+        stack[--stack_pos] = left*right;
+      } else if (op_type == VM_DIV) {
+        stack[--stack_pos] = left/right;
+      } else if (op_type == VM_ADD) {
+        stack[--stack_pos] = left+right;
+      } else if (op_type == VM_SUB) {
+        stack[--stack_pos] = left-right;
+      } else if (op_type == VM_FACTORIAL) {
+        stack[--stack_pos] = tgamma(right);
+      } else if (op_type == VM_NEG) {
+        stack[--stack_pos] = -right;
       }
     } else if (instruction.instructionType == FUNC) {
-      register enum funcs_enum ftype = instruction.funcType;
-      if (ftype == LOG) {
-        stack[stack_pos] = stack[stack_pos] > 0 ? log(stack[stack_pos]) / log(instruction.base) : NAN;
-      } else if (ftype == SIN) {
+      char *fname = instruction.func_name;
+      if (STR_EQ(fname, "log")) {
+        stack[stack_pos] = stack[stack_pos] > 0 ? log10(stack[stack_pos]) : NAN;
+      } else if (STR_EQ(fname, "ln")) {
+        stack[stack_pos] = stack[stack_pos] > 0 ? log(stack[stack_pos]) : NAN;
+      } else if (STR_EQ(fname, "sin")) {
         stack[stack_pos] = sin(stack[stack_pos]);
-      } else if (ftype == COS) {
+      } else if (STR_EQ(fname, "cos")) {
         stack[stack_pos] = cos(stack[stack_pos]);
-      } else if (ftype == TAN) {
+      } else if (STR_EQ(fname, "tan")) {
         stack[stack_pos] = tan(stack[stack_pos]);
-      } else if (ftype == CSC) {
+      } else if (STR_EQ(fname, "csc")) {
         stack[stack_pos] = 1/sin(stack[stack_pos]);
-      } else if (ftype == SEC) {
+      } else if (STR_EQ(fname, "sec")) {
         stack[stack_pos] = 1/cos(stack[stack_pos]);
-      } else if (ftype == COT) {
+      } else if (STR_EQ(fname, "cot")) {
         stack[stack_pos] = 1/tan(stack[stack_pos]);
-      } else if (ftype == ARCSIN) {
+      } else if (STR_EQ(fname, "arcsin") || STR_EQ(fname, "asin")) {
         stack[stack_pos] = asin(stack[stack_pos]);
-      } else if (ftype == ARCCOS) {
+      } else if (STR_EQ(fname, "arccos") || STR_EQ(fname, "acos")) {
         stack[stack_pos] = acos(stack[stack_pos]);
-      } else if (ftype == ARCTAN) {
+      } else if (STR_EQ(fname, "arctan") || STR_EQ(fname, "atan")) {
         stack[stack_pos] = atan(stack[stack_pos]);
-      } else if (ftype == SQRT) {
+      } else if (STR_EQ(fname, "sqrt")) {
         stack[stack_pos] = stack[stack_pos] >= 0 ? sqrt(stack[stack_pos]) : NAN;
+      } else if (STR_EQ(fname, "abs")) {
+        stack[stack_pos] = fabs(stack[stack_pos]);
+      } else if (STR_EQ(fname, "floor")) {
+        stack[stack_pos] = floor(stack[stack_pos]);
+      } else if (STR_EQ(fname, "ceil")) {
+        stack[stack_pos] = ceil(stack[stack_pos]);
+      } else if (STR_EQ(fname, "round")) {
+        stack[stack_pos] = round(stack[stack_pos]);
       }
-    } else if (instruction.instructionType == FACTORIAL) {
-      stack[stack_pos] = tgamma(stack[stack_pos]);
     }
     i++;
   }
@@ -78,38 +98,16 @@ void VM_Print(VM_Code code) {
       if (instruction.pushed.objectType == NUMBER) {
         printf("PUSH %g\n", instruction.pushed.value.number);
       } else {
-        printf("PUSH VAR%i\n", instruction.pushed.value.variableIndex);
+        printf("PUSH %s\n", instruction.pushed.value.name);
       }
     } else if (instruction.instructionType == OPERATION) {
-      char *ops[] = {"EXP","MUL","DIV","ADD","SUB","MOD"};
+      char *ops[] = {"ADD", "SUB", "MUL", "DIV", "EXP", "NEG", "FACTORIAL"};
       char *operation = ops[instruction.opType];
-      printf("%s\n",operation);
+      printf("OP %s\n",operation);
     } else if (instruction.instructionType == FUNC) {
-      enum funcs_enum ftype = instruction.funcType;
-      if (ftype == LOG) {
-        printf("LOGARITHM BASE%f \n", instruction.base);
-      } else if (ftype == SIN) {
-        printf("SINE\n");
-      } else if (ftype == COS) {
-        printf("COSINE\n");
-      } else if (ftype == TAN) {
-        printf("TANGENT\n");
-      } else if (ftype == CSC) {
-        printf("COSECANT\n");
-      } else if (ftype == SEC) {
-        printf("SECANT\n");
-      } else if (ftype == COT) {
-        printf("COTANGENT\n");
-      } else if (ftype == ARCSIN) {
-        printf("ARCSINE\n");
-      } else if (ftype == ARCCOS) {
-        printf("ARCCOS\n");
-      } else if (ftype == ARCTAN) {
-        printf("ARCTANGENT\n");
-      } else if (ftype == SQRT) {
-        printf("SQRT\n");
-      }
-    } else if (instruction.instructionType == FACTORIAL) printf("FACTORIAL\n");
+      char *fname = instruction.func_name;
+      printf("FUNC %s\n",fname);
+    }
     i++;
   }
 }
