@@ -3,10 +3,37 @@
 #include <string.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <stdint.h>
 #include <math.h>
 #include "vm.h"
 #include "error_messages.h"
 
+
+#define VARIABLES_LENGTH 3
+
+// variable stuff
+variable_map variables_no_x() {
+  char *names[] = {"pi", "e", "phi"};
+  double values[] = {M_PI, M_E, (1.0 + sqrt(5.0)) / 2.0};
+  variable_map ret = (variable_map) {malloc(VARIABLES_LENGTH * sizeof(char*)), malloc(VARIABLES_LENGTH * sizeof(double)), VARIABLES_LENGTH};
+  memcpy(ret.variable_names, names, VARIABLES_LENGTH * sizeof(char*));
+  memcpy(ret.variable_values, values, VARIABLES_LENGTH * sizeof(double));
+  return ret;
+}
+
+void add_variable(variable_map *map, char *name, double value) {
+  char **names = malloc((map->length + 1) * sizeof(char*));
+  double *values = malloc((map->length + 1) * sizeof(double));
+  memcpy(names, map->variable_names, map->length * sizeof(char*));
+  *(names + map->length) = name;
+  memcpy(values, map->variable_values, map->length * sizeof(double));
+  *(values + map->length) = value;
+  free(map->variable_names);
+  free(map->variable_values);
+  map->variable_names = names;
+  map->variable_values = values;
+  map->length += 1;
+}
 
 // Get full-length, allocated string from stdin
 char * getstr() {
@@ -738,6 +765,60 @@ VM_Code compile(SemiTokenTreeNode node) {
   return code;
 }
 
+char *string_of_char(char ch, size_t len) {
+  char *out = malloc(len + 1);
+  *(out + len) = '\0';
+  memset(out, ch, len);
+  return out;
+}
+
+char **alloc_grid(size_t width, size_t height) {
+  char **grid = malloc(height * sizeof(char*));
+  int i = 0;
+  while (i < height) {
+    char *row = malloc(width + 1);
+    *(row + width) = '\0';
+    memset(row, ' ', width);
+    *(grid + i) = row;
+    i++;
+  }
+  return grid;
+}
+
+void print_grid(char **grid, size_t width, size_t height) {
+  int i = 0;
+  printf("+%s+\n", string_of_char('-', width));
+  while (i < height) {
+    printf("|%s|\n", *(grid + i));
+    i++;
+  }
+  printf("+%s+\n", string_of_char('-', width));
+  return;
+}
+
+int graph_function(VM_Code func, double x_offset, double y_offset, size_t width, size_t height, double scale) {
+  char **grid = alloc_grid(width, height);
+  for (size_t i = 0; i < width; i++) {
+    double x = (((float)i) * scale + x_offset);
+    
+    variable_map variables = variables_no_x();
+    add_variable(&variables, "x", x);
+    double output = (VM_Exec(func, variables) - y_offset) / scale;
+    if (!isnan(output)) {
+      double fY = output / 2;
+      long long y = (long long) floor(fY);
+      if ((y < height) && (y >= 0)) {
+        char gchar = (fmod(output, 2.0) >= 1) ? '^' : '.';
+        *(*(grid + height - y - 1) + i) = gchar;
+      }
+    } else {
+      return -1;
+    }
+  }
+  print_grid(grid, width, height);
+  return 0;
+}
+
 int main(void) {
   size_t tok_length = 32;
   char *str = getstr();
@@ -747,10 +828,7 @@ int main(void) {
   top_node = parse_operations(top_node);
   VM_Code code = compile(top_node);
   
-  char *variable_names[] = {"pi", "e", "phi"};
-  double variable_values[] = {M_PI, M_E, (1.0 + sqrt(5.0)) / 2.0};
-  size_t variables_len = 3;
-  
-  printf("%g", VM_Exec(code, variable_names, variable_values, variables_len));
+  //printf("%g", VM_Exec(code, variables_no_x()));
+  graph_function(code, 0, 0, 10, 5, 1);
   return 0;
 }

@@ -31,5 +31,13 @@ struct VM_Code {
 
 typedef struct VM_Code VM_Code;
 
-double VM_Exec(VM_Code code, char **var_names, double *var_values, size_t var_len);
+struct variable_map {
+  char **variable_names;
+  double *variable_values;
+  size_t length;
+};
+
+typedef struct variable_map variable_map;
+
+double VM_Exec(VM_Code code, variable_map variables);
 void VM_Print(VM_Code code);

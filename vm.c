@@ -10,7 +10,7 @@
 #define STR_EQ(a,b) (strcmp(a,b) == 0)
 
 // Execute stack machine instructions
-double VM_Exec(VM_Code code, char **var_names, double *var_values, size_t var_len) {
+double VM_Exec(VM_Code code, variable_map variables) {
   size_t i = 0;
   double *stack = malloc(code.length * sizeof(double));
   size_t stack_pos = SIZE_T_MAX;
@@ -22,8 +22,8 @@ double VM_Exec(VM_Code code, char **var_names, double *var_values, size_t var_le
         stack[++stack_pos] = object.value.number;
       } else if (object.objectType == VARIABLE) {
         double value = NAN;
-        for (size_t j = 0; j < var_len; j++) {
-          if (strcmp(var_names[j], object.value.name) == 0) value = *(var_values + j);
+        for (size_t j = 0; j < variables.length; j++) {
+          if (strcmp(*(variables.variable_names + j), object.value.name) == 0) value = *(variables.variable_values + j);
         }
         if (isnan(value)) return NAN; // if variable does not exist, return NAN
         else stack[++stack_pos] = value;
