@@ -1,3 +1,5 @@
+#ifndef TERMCALC_ERROR_MESSAGES_H
+#define TERMCALC_ERROR_MESSAGES_H
 #include <stddef.h>
 
 #define ERR_NO_IMPLICIT_MULTIPLICATION 0
@@ -9,3 +11,4 @@
 #define ERR_UNCLOSED_PARENTHESIS 6
 
 char *error_message(size_t value);
+#endif

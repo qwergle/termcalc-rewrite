@@ -1,8 +1,8 @@
+#ifndef TERMCALC_VM_H
+#define TERMCALC_VM_H
 #include <stddef.h>
 
-#define VARS_LEN 3
-#define FUNCS_LEN 16
-enum funcs_enum {LOG, SIN, COS, TAN, CSC, SEC, COT, ARCSIN, ARCCOS, ARCTAN, SQRT};
+
 enum operations_enum {VM_ADD, VM_SUB, VM_MUL, VM_DIV, VM_EXP, VM_NEG, VM_FACTORIAL};
 
 struct VM_Object {
@@ -41,3 +41,4 @@ typedef struct variable_map variable_map;
 
 double VM_Exec(VM_Code code, variable_map variables);
 void VM_Print(VM_Code code);
+#endif
