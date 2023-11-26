@@ -23,7 +23,10 @@ double VM_Exec(VM_Code code, variable_map variables) {
       } else if (object.objectType == VARIABLE) {
         double value = NAN;
         for (size_t j = 0; j < variables.length; j++) {
-          if (strcmp(*(variables.variable_names + j), object.value.name) == 0) value = *(variables.variable_values + j);
+          if (strcmp(*(variables.variable_names + j), object.value.name) == 0) {
+            value = *(variables.variable_values + j);
+            break;
+          }
         }
         if (isnan(value)) return NAN; // if variable does not exist, return NAN
         else stack[++stack_pos] = value;

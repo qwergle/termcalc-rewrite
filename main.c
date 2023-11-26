@@ -11,8 +11,8 @@
 
 #define VARIABLES_LENGTH 3
 
-// variable stuff
-variable_map variables_no_x() {
+// default variable map
+variable_map default_variables() {
   char *names[] = {"pi", "e", "phi"};
   double values[] = {M_PI, M_E, (1.0 + sqrt(5.0)) / 2.0};
   variable_map ret = (variable_map) {malloc(VARIABLES_LENGTH * sizeof(char*)), malloc(VARIABLES_LENGTH * sizeof(double)), VARIABLES_LENGTH};
@@ -21,6 +21,7 @@ variable_map variables_no_x() {
   return ret;
 }
 
+// add a variable to the map
 void add_variable(variable_map *map, char *name, double value) {
   char **names = malloc((map->length + 1) * sizeof(char*));
   double *values = malloc((map->length + 1) * sizeof(double));
@@ -33,6 +34,18 @@ void add_variable(variable_map *map, char *name, double value) {
   map->variable_names = names;
   map->variable_values = values;
   map->length += 1;
+}
+
+// sets a variable within the map, or adds it if it doesn't already exist
+void set_variable(variable_map *map, char *name, double value) {
+  bool exists = false;
+  for (size_t i = 0; i < map->length; i++) {
+    if (strcmp(map->variable_names[i], name) == 0) {
+      map->variable_values[i] = value;
+      return;
+    }
+  }
+  add_variable(map, name, value);
 }
 
 // Get full-length, allocated string from stdin
@@ -796,27 +809,32 @@ void print_grid(char **grid, size_t width, size_t height) {
   return;
 }
 
-int graph_function(VM_Code func, double x_offset, double y_offset, size_t width, size_t height, double scale) {
+#define GRID_TO_X(n) (((double)(n) - (double)(width/2)) * scale + x_offset)
+#define Y_TO_GRID(n) ((n - y_offset) / scale + height)
+
+// generate a graph on a char-grid from a function and graph settings
+char **graph_function(VM_Code func, double x_offset, double y_offset, size_t width, size_t height, double scale, uint8_t mode) {
   char **grid = alloc_grid(width, height);
   for (size_t i = 0; i < width; i++) {
-    double x = (((float)i) * scale + x_offset);
-    
-    variable_map variables = variables_no_x();
-    add_variable(&variables, "x", x);
-    double output = (VM_Exec(func, variables) - y_offset) / scale;
-    if (!isnan(output)) {
-      double fY = output / 2;
-      long long y = (long long) floor(fY);
-      if ((y < height) && (y >= 0)) {
-        char gchar = (fmod(output, 2.0) >= 1) ? '^' : '.';
-        *(*(grid + height - y - 1) + i) = gchar;
+    variable_map variables = default_variables();
+    if (mode == 0) {
+      double x = GRID_TO_X(i);
+      
+      set_variable(&variables, "x", x);
+      double output = Y_TO_GRID(VM_Exec(func, variables));
+      if (!isnan(output)) {
+        long long y = (long long) floor(output / 2);
+        if ((y < height) && (y >= 0)) {
+          char gchar; 
+          if (fmod(output, 2.0) > 4.0/3.0) gchar = '^';
+          else if (fmod(output, 2.0) < 2.0/3.0) gchar = '.';
+          else gchar = '-';
+          *(*(grid + height - y - 1) + i) = gchar;
+        }
       }
-    } else {
-      return -1;
     }
   }
-  print_grid(grid, width, height);
-  return 0;
+  return grid;
 }
 
 int main(void) {
@@ -828,7 +846,6 @@ int main(void) {
   top_node = parse_operations(top_node);
   VM_Code code = compile(top_node);
   
-  //printf("%g", VM_Exec(code, variables_no_x()));
-  graph_function(code, 0, 0, 10, 5, 1);
+  print_grid(graph_function(code, 0, 0, 40, 20, 0.1, 0), 40, 20);
   return 0;
 }
