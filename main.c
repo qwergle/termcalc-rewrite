@@ -91,44 +91,76 @@ char **alloc_grid(size_t width, size_t height) {
   return grid;
 }
 
-void print_grid(char **grid, size_t width, size_t height) {
-  int i = 0;
-  printf("+%s+\n", string_of_char('-', width));
-  while (i < height) {
-    printf("|%s|\n", *(grid + i));
-    i++;
+char *print_grid_to_string(char **grid, size_t width, size_t height) {
+  char *out = malloc((1 + width + 2) * (height+2) + 1);
+  *out = 0;
+  strcat(out, "+");
+  strcat(out, string_of_char('-', width));
+  strcat(out, "+\n");
+  for (size_t i = 0; i < height; i++) {
+    strcat(out, "|");
+    strcat(out, *(grid + i));
+    strcat(out, "|\n");
   }
-  printf("+%s+\n", string_of_char('-', width));
-  return;
+  strcat(out, "+");
+  strcat(out, string_of_char('-', width));
+  strcat(out, "+\n");
+  return out;
 }
 
-#define GRID_TO_X(n) (((double)(n) - (double)(width/2)) * scale + x_offset)
-#define Y_TO_GRID(n) ((n - y_offset) / scale + height)
+void print_grid(char **grid, size_t width, size_t height) {
+  fputs(print_grid_to_string(grid, width, height), stdout);
+}
+
+struct graphing_options {
+  double x_offset;
+  double y_offset;
+  size_t width;
+  size_t height;
+  double scale;
+  uint8_t mode;
+};
+
+typedef struct graphing_options graphing_options;
+
+#define GRID_TO_X(n) (((double)(n) - (double)(opts.width/2)) * opts.scale + opts.x_offset)
+#define Y_TO_GRID(n) ((n - opts.y_offset) / opts.scale + opts.height)
 
 // generate a graph on a char-grid from a function and graph settings
-char **graph_function(VM_Code func, double x_offset, double y_offset, size_t width, size_t height, double scale, uint8_t mode) {
-  char **grid = alloc_grid(width, height);
-  for (size_t i = 0; i < width; i++) {
+char **render_function(VM_Code func, graphing_options opts) {
+  char **grid = alloc_grid(opts.width, opts.height);
+  for (size_t i = 0; i < opts.width; i++) {
     variable_map variables = default_variables();
-    if (mode == 0) {
+    if (opts.mode == 0) {
       double x = GRID_TO_X(i);
       
       set_variable(&variables, "x", x);
       double output = Y_TO_GRID(VM_Exec(func, variables));
       if (!isnan(output)) {
         long long y = (long long) floor(output / 2);
-        if ((y < height) && (y >= 0)) {
+        if ((y < opts.height) && (y >= 0)) {
           char gchar; 
           if (fmod(output, 2.0) > 4.0/3.0) gchar = '^';
           else if (fmod(output, 2.0) < 2.0/3.0) gchar = '.';
           else gchar = '-';
-          *(*(grid + height - y - 1) + i) = gchar;
+          *(*(grid + opts.height - y - 1) + i) = gchar;
         }
       }
     }
   }
   return grid;
 }
+
+void print_graph(VM_Code func, graphing_options opts) {
+  print_grid(render_function(func, opts), opts.width, opts.height);
+}
+
+#define QUERY_VALUE_FROM_USER(prompt, format_specifier, pointer) do { \
+  fputs(prompt, stdout); \
+  while (scanf(format_specifier, pointer) != 1) { \
+    fputs("Invalid input. Try again.\n", stdout); \
+  } \
+} while (0)
 
 int main(void) {
   size_t tok_length = 32;
@@ -138,7 +170,14 @@ int main(void) {
   top_node = parse_parentheses(top_node);
   top_node = parse_operations(top_node);
   VM_Code code = compile(top_node);
-  
-  print_grid(graph_function(code, 0, 0, 40, 20, 0.1, 0), 40, 20);
+
+  graphing_options opts;
+  QUERY_VALUE_FROM_USER("Please input the width of the grid... ", "%lu", &(opts.width));
+  QUERY_VALUE_FROM_USER("Please input the height of the grid... ", "%lu", &(opts.height));
+  QUERY_VALUE_FROM_USER("Please input the center of the X axis... ", "%lf", &(opts.x_offset));
+  QUERY_VALUE_FROM_USER("Please input the center of the Y axis... ", "%lf", &(opts.y_offset));
+  QUERY_VALUE_FROM_USER("Please input the scale... ", "%lf", &(opts.scale));
+  opts.mode = 0;
+  print_graph(code, opts);
   return 0;
 }
