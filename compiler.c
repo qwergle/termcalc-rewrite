@@ -149,7 +149,7 @@ Token *tokenizer(char *str, size_t *tokens_length) {
     } else if (ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '^') {
     // If it is a binary operator or minus sign
       // Minus sign stuff
-      if (ch == '-' && (PREV_TOKEN_TYPE == BIN_OP || PREV_TOKEN_TYPE == ERR_TOK || PREV_TOKEN_TYPE == NEG_OP || isdigit(NEXT_CH) || IS_WORD_CH(NEXT_CH))) {
+      if (ch == '-' && (PREV_TOKEN_TYPE == BIN_OP || PREV_TOKEN_TYPE == ERR_TOK || PREV_TOKEN_TYPE == NEG_OP || PREV_TOKEN_TYPE == OPEN_PARA)) {
         // If the token is actually a negative sign
         ADD_NEGATIVE_SIGN_TOKEN();
       } else {
@@ -544,9 +544,7 @@ SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
     i = 0;
     size_t *op_positions = malloc(new_contents_len * sizeof(size_t));
     size_t op_pos = 0;
-    j = new_contents_len;
-    while (j > 0) {
-      i = j-1;
+    while (i < new_contents_len) {
       bool first_node_is_value = !nodes[i].isToken;
       bool second_node_is_op = (i+2 < new_contents_len) ? IS_OP_TOK_NODE(nodes[i+1], op) : false;
       bool third_node_is_value = (i+2 < new_contents_len) ? !nodes[i+2].isToken : false;
@@ -558,11 +556,10 @@ SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
         binary_node.content.node.value.contents.nodes = malloc(sizeof(SemiTokenTreeNode) * 2);
         memcpy(binary_node.content.node.value.contents.nodes, nodes + i, sizeof(SemiTokenTreeNode)); // move first value to first branch of binary node
         memcpy(binary_node.content.node.value.contents.nodes + 1, nodes + i + 2, sizeof(SemiTokenTreeNode)); // move second value to second branch of binary node
-        memmove(nodes + i + 1, nodes + i + 3, (new_contents_len - i - 2) * sizeof(SemiTokenTreeNode));
+        memmove(nodes + i + 1, nodes + i + 3, (new_contents_len - i) * sizeof(SemiTokenTreeNode));
         *(nodes + i) = binary_node;
         new_contents_len -= 2;
-      }
-      j--;
+      } else i++;
     }
     op--;
   }

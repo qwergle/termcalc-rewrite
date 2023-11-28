@@ -32,6 +32,8 @@ Token *tokenizer(char *str, size_t *tokens_length);
 
 void print_token(Token token);
 
+void print_tokens(Token *tokens, size_t tokens_len);
+
 // Transistional syntax tree structure for use during parsing
 struct SemiTokenTreeNode {
   bool isToken;
