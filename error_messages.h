@@ -9,6 +9,7 @@
 #define ERR_NO_FUNCTION_INPUT_FOUND 4
 #define ERR_NO_OPERAND_FOUND 5
 #define ERR_UNCLOSED_PARENTHESIS 6
+#define ERR_MISPLACED_DECIMAL 7
 
 char *error_message(size_t value);
 #endif

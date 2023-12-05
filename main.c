@@ -181,6 +181,8 @@ int main(void) {
   SemiTokenTreeNode top_node = create_top_node(tokens, tok_length);
   top_node = parse_parentheses(top_node);
   top_node = parse_operations(top_node);
+  print_node(top_node);
+  putc('\n', stdout);
   VM_Code code = compile(top_node);
 
   graphing_options opts;

@@ -192,6 +192,7 @@ Token *tokenizer(char *str, size_t *tokens_length) {
     } else if (ch == '.') {
     // If it is a decimal point
       if (isDecimal) TOKENIZER_ERROR(ERR_MULTIPLE_DECIMAL_POINTS);
+      if (PREV_TOKEN_TYPE == WORD || PREV_TOKEN_TYPE == FACTORIAL_OP || PREV_TOKEN_TYPE == CLOSE_PARA) TOKENIZER_ERROR(ERR_MISPLACED_DECIMAL);
       DECIMAL_ON();
     } else if (isalpha(ch) || ch == '_') {
     // If it is a word character
@@ -556,8 +557,8 @@ SemiTokenTreeNode parse_operations(SemiTokenTreeNode top_node) {
         binary_node.content.node.value.contents.nodes = malloc(sizeof(SemiTokenTreeNode) * 2);
         memcpy(binary_node.content.node.value.contents.nodes, nodes + i, sizeof(SemiTokenTreeNode)); // move first value to first branch of binary node
         memcpy(binary_node.content.node.value.contents.nodes + 1, nodes + i + 2, sizeof(SemiTokenTreeNode)); // move second value to second branch of binary node
-        memmove(nodes + i + 1, nodes + i + 3, (new_contents_len - i) * sizeof(SemiTokenTreeNode));
         *(nodes + i) = binary_node;
+        if (i < new_contents_len-4) memmove(nodes + i + 1, nodes + i + 3, (new_contents_len - i - 1) * sizeof(SemiTokenTreeNode));
         new_contents_len -= 2;
       } else i++;
     }
