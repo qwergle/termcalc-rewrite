@@ -1,10 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
-#include <ctype.h>
-#include <stdint.h>
-#include <math.h>
 #include "vm.h"
 #include "error_messages.h"
 #include "compiler.h"
@@ -39,12 +35,10 @@ char * getstr() {
 
 void query_value_from_user(char *prompt, char *format_specifier, void *pointer) {
   fputs(prompt, stdout);
-  fflush(stdout);
   int rc;
   DIFFERENT_SCANF(format_specifier, pointer);
   while (rc != 1) {
-    fputs("Invalid input. Try again. ", stdout);
-    fflush(stdout);
+    fputs("Invalid input. Try again... ", stdout);
     DIFFERENT_SCANF(format_specifier, pointer);
   }
 }
